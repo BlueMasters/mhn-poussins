@@ -21,8 +21,14 @@
 #include <MFRC522.h>
 #include <EEPROM.h>
 
-#define DEBUG true
+#define DEBUG false
 #define RESET_PIN 49
+#define AUDIO_TRIGGER_PIN 7
+#define REMOVE_TO_RETRIGGER 3
+
+#define MILLISECOND 1
+#define SECOND (1000 * MILLISECOND)
+#define AUDIO_PULSE_WIDTH (100 * MILLISECOND)
 
 struct uid {
     byte size;
@@ -33,6 +39,7 @@ struct uid {
 struct uid MASTERS[] = {
     {4, {0x84, 0x6f, 0x9d, 0xbb}},
     {4, {0x94, 0xb3, 0xa9, 0xbb}},
+    {4, {0x64, 0x11, 0x29, 0xBB}},   
 };
 
 enum state {
@@ -54,19 +61,21 @@ struct sensor {
 // pin definition for the sensors
 struct sensor sensors[] = {
     {.redLED = 30, .greenLED = 40, .cs = 22},
-//  {.redLED = 31, .greenLED = 41, .cs = 23},
-//  {.redLED = 32, .greenLED = 42, .cs = 24},
+    {.redLED = 31, .greenLED = 41, .cs = 23},
+    {.redLED = 32, .greenLED = 42, .cs = 24},
     {.redLED = 33, .greenLED = 43, .cs = 25},
-//  {.redLED = 34, .greenLED = 44, .cs = 26},
+    {.redLED = 34, .greenLED = 44, .cs = 26},
     {.redLED = 35, .greenLED = 45, .cs = 27},
-//  {.redLED = 36, .greenLED = 46, .cs = 28},
+    {.redLED = 36, .greenLED = 46, .cs = 28},
 };
 
 // pins definition for the status LED
-struct RGB {int red; int green; int blue;} statusLED = {11, 10, 12};
+const struct RGB {int red; int green; int blue;} statusLED = {11, 10, 12};
 
 const int N_OF_SENSORS = sizeof(sensors) / sizeof(sensor);
 const int N_OF_MASTERS = sizeof(MASTERS) / sizeof(struct uid);
+
+unsigned long lastAudioTrigger = 0;
 
 /***************************************************************************
  * Setup
@@ -81,6 +90,10 @@ void setup() {
     pinMode(statusLED.green, OUTPUT);
     pinMode(statusLED.blue,  OUTPUT);
     setStatus(0,0,0);
+
+    digitalWrite(AUDIO_TRIGGER_PIN, HIGH);
+    pinMode(AUDIO_TRIGGER_PIN, OUTPUT);
+    digitalWrite(AUDIO_TRIGGER_PIN, LOW);
 
     for (int i = 0; i < N_OF_SENSORS; i++) {
         struct sensor* s = &sensors[i];
@@ -110,7 +123,7 @@ void setup() {
         ledGreen(s);
     }
     setStatus(0,255,0);
-    delay(1000);
+    delay(2000);
 
     // Turn all LEDs red (visual control)
     for (int i = 0; i < N_OF_SENSORS; i++) {
@@ -118,7 +131,7 @@ void setup() {
         ledRed(s);
     }
     setStatus(255,0,0);
-    delay(1000);
+    delay(2000);
 
    // Turn all sensor LEDs OFF
     for (int i = 0; i < N_OF_SENSORS; i++) {
@@ -156,6 +169,7 @@ void setup() {
         }
         // Call PCD_Init once again. This is required after a self-test
         s->mfrc522.PCD_Init(s->cs, RESET_PIN);
+        delay(100);
     }
 
     if (countOk != N_OF_SENSORS) {
@@ -180,8 +194,14 @@ void setup() {
  ***************************************************************************/
 
 void loop() {
-    mainLoop:
     int okCount = 0;
+    unsigned long now = millis();
+
+    static bool curOkState = false;
+    static bool prevOkState = false;
+    static bool audioPulse = false;
+    static bool trigger = true;
+    
     for (int i = 0; i < N_OF_SENSORS; i++) {
         #ifdef DEBUG
         // Serial.print("reading sensor ");
@@ -203,7 +223,7 @@ void loop() {
                 s->mfrc522.PCD_StopCrypto1();
                 learn();
                 delay(500);
-                goto mainLoop; // I know that this is ugly, but it works
+                return;
             } else if (areEqual(
                     s->mfrc522.uid.size, s->mfrc522.uid.uidByte,
                     &s->expectedUid)) {
@@ -227,16 +247,50 @@ void loop() {
             }
         }
     }
+ 
+    if (okCount <= AUDIO_TRIGGER_PIN - REMOVE_TO_RETRIGGER) {
+        trigger = true;
+    }
+ 
+    // check of we have all sensors OK
     if (okCount >= N_OF_SENSORS) {
         setStatus(0,255,0);
+        if (!prevOkState && trigger) {
+            lastAudioTrigger = now;
+            audioPulse = true;
+            trigger = false;
+            digitalWrite(AUDIO_TRIGGER_PIN, LOW);
+            Serial.print("Cocorico ON");
+        }
+        prevOkState = curOkState;
+        curOkState = true;
     } else {
         setStatus(255,0,0);
+        prevOkState = curOkState;
+        curOkState = false;
+    }
+
+    if (audioPulse && deltaT(now, lastAudioTrigger) > AUDIO_PULSE_WIDTH) {
+        digitalWrite(AUDIO_TRIGGER_PIN, HIGH);
+        Serial.print("Cocorico OFF");
+        audioPulse = false;
     }
 }
 
 /***************************************************************************
  * Helpers
  ***************************************************************************/
+
+//------------------------------------------
+// computes t1 - t2 taking care of overflow 
+//------------------------------------------
+unsigned long deltaT(unsigned long t0, unsigned long t1) {
+    if (t1 >= t0) { // normal case
+         return t1 - t0;
+    } else { // overflow of t1
+        return t1 + (0xFFFFFFFFul - t0);
+    }
+}
 
 //-------------------------------------------------
 // Switch off the LED associated with the sensor s 
