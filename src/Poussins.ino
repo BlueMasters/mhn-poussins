@@ -5,13 +5,13 @@
 /***************************************************************************
  * Copyright 2016 Jacques Supcik <jacques.supcik@hefr.ch>
  *                Haute école d'ingénierie et d'architecture
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -41,7 +41,7 @@ struct uid {
 struct uid MASTERS[] = {
     {4, {0x84, 0x6f, 0x9d, 0xbb}},
     {4, {0x94, 0xb3, 0xa9, 0xbb}},
-    {4, {0x64, 0x11, 0x29, 0xBB}},   
+    {4, {0x64, 0x11, 0x29, 0xBB}},
 };
 
 enum state {
@@ -54,6 +54,7 @@ enum state {
 struct sensor {
     int        redLED;
     int        greenLED;
+    int        blueLED;
     int        cs;
     MFRC522    mfrc522;
     enum state state;
@@ -62,17 +63,14 @@ struct sensor {
 
 // pin definition for the sensors
 struct sensor sensors[] = {
-    {.redLED = 30, .greenLED = 40, .cs = 22},
-    {.redLED = 31, .greenLED = 41, .cs = 23},
-    {.redLED = 32, .greenLED = 42, .cs = 24},
-    {.redLED = 33, .greenLED = 43, .cs = 25},
-    {.redLED = 34, .greenLED = 44, .cs = 26},
-    {.redLED = 35, .greenLED = 45, .cs = 27},
-    {.redLED = 36, .greenLED = 46, .cs = 28},
+    {.redLED =  2, .greenLED =  3, .blueLED =  4, .cs = 22},
+    {.redLED =  5, .greenLED =  6, .blueLED =  7, .cs = 23},
+    {.redLED =  8, .greenLED =  9, .blueLED = 10, .cs = 24},
+    {.redLED = 44, .greenLED = 45, .blueLED = 46, .cs = 25},
 };
 
 // pins definition for the status LED
-const struct RGB {int red; int green; int blue;} statusLED = {11, 10, 12};
+const struct RGB {int red; int green; int blue;} statusLED = {A3, A1, A2};
 
 const int N_OF_SENSORS = sizeof(sensors) / sizeof(sensor);
 const int N_OF_MASTERS = sizeof(MASTERS) / sizeof(struct uid);
@@ -91,7 +89,7 @@ void setup() {
     pinMode(statusLED.red,   OUTPUT);
     pinMode(statusLED.green, OUTPUT);
     pinMode(statusLED.blue,  OUTPUT);
-    setStatus(0,0,0);
+    setStatus(LOW, LOW, LOW);
 
     digitalWrite(AUDIO_TRIGGER_PIN, HIGH);
     pinMode(AUDIO_TRIGGER_PIN, OUTPUT);
@@ -103,6 +101,7 @@ void setup() {
         ledOff(s);
         pinMode(s->greenLED, OUTPUT);
         pinMode(s->redLED,   OUTPUT);
+        pinMode(s->blueLED,  OUTPUT);
     }
 
     // Make sure all chip select are HIGH
@@ -124,7 +123,7 @@ void setup() {
         struct sensor* s = &sensors[i];
         ledGreen(s);
     }
-    setStatus(0,255,0);
+    setStatus(LOW, HIGH, LOW);
     delay(2000);
 
     // Turn all LEDs red (visual control)
@@ -132,17 +131,17 @@ void setup() {
         struct sensor* s = &sensors[i];
         ledRed(s);
     }
-    setStatus(255,0,0);
+    setStatus(HIGH, LOW, LOW);
     delay(2000);
 
-   // Turn all sensor LEDs OFF
+   // Turn all sensor LEDs white
     for (int i = 0; i < N_OF_SENSORS; i++) {
         struct sensor* s = &sensors[i];
-        ledOff(s);
+        ledWhite(s);
     }
 
     // Turn status LED blue
-    setStatus(0,0,255);
+    setStatus(LOW, LOW, HIGH);
 
     int countOk = 0;
     // Check all sensors
@@ -151,8 +150,8 @@ void setup() {
         Serial.print("Check sensor ");
         Serial.println(i);
         #endif
-        struct sensor* s = &sensors[i];       
-        
+        struct sensor* s = &sensors[i];
+
         #ifdef DEBUG
         s->mfrc522.PCD_DumpVersionToSerial();
         #endif
@@ -178,17 +177,17 @@ void setup() {
         Serial.println("Sensors check failed. Abort.");
         for(;;) {/* forever */}
     }
-    
+
     // Load expected UIDs from EEPROM
     eepromLoadConfig();
     delay(1000); /// wait 1 second
 
-    // clear all LEDs
+    // set all LEDs white
     for (int i = 0; i < N_OF_SENSORS; i++) {
         struct sensor* s = &sensors[i];
-        ledOff(s);
+        ledWhite(s);
     }
-    setStatus(0,0,0);
+    setStatus(LOW, LOW, LOW);
 }
 
 /***************************************************************************
@@ -203,14 +202,14 @@ void loop() {
     static bool prevOkState = false;
     static bool audioPulse = false;
     static bool trigger = true;
-    
+
     for (int i = 0; i < N_OF_SENSORS; i++) {
         #ifdef DEBUG
         // Serial.print("reading sensor ");
-        // Serial.println(i);  
+        // Serial.println(i);
         #endif
         struct sensor* s = &sensors[i];
-        
+
         if (s->mfrc522.PICC_IsNewCardPresent() &&
                 s->mfrc522.PICC_ReadCardSerial()) {
             #ifdef DEBUG
@@ -245,18 +244,18 @@ void loop() {
         } else {
             if (s->state != ABSENT) {
                 s->state = ABSENT;
-                ledOff(s);
+                ledWhite(s);
             }
         }
     }
- 
+
     if (okCount <= AUDIO_TRIGGER_PIN - REMOVE_TO_RETRIGGER) {
         trigger = true;
     }
- 
+
     // check of we have all sensors OK
     if (okCount >= N_OF_SENSORS) {
-        setStatus(0,255,0);
+        setStatus(LOW, HIGH, LOW);
         if (!prevOkState && trigger) {
             lastAudioTrigger = now;
             audioPulse = true;
@@ -267,7 +266,7 @@ void loop() {
         prevOkState = curOkState;
         curOkState = true;
     } else {
-        setStatus(255,0,0);
+        setStatus(HIGH, LOW, LOW);
         prevOkState = curOkState;
         curOkState = false;
     }
@@ -284,7 +283,7 @@ void loop() {
  ***************************************************************************/
 
 //------------------------------------------
-// computes t1 - t2 taking care of overflow 
+// computes t1 - t2 taking care of overflow
 //------------------------------------------
 unsigned long deltaT(unsigned long t0, unsigned long t1) {
     if (t1 >= t0) { // normal case
@@ -295,36 +294,52 @@ unsigned long deltaT(unsigned long t0, unsigned long t1) {
 }
 
 //-------------------------------------------------
-// Switch off the LED associated with the sensor s 
+// Switch off the LED associated with the sensor s
 //-------------------------------------------------
 void ledOff(struct sensor* s) {
-    digitalWrite(s->greenLED, HIGH);
-    digitalWrite(s->redLED,   HIGH);
+    analogWrite(s->redLED,   0);
+    analogWrite(s->greenLED, 0);
+    analogWrite(s->blueLED,  0);
 }
 
 //----------------------------------------------------
 // Set the LED associated with the sensor s the green
 //----------------------------------------------------
 void ledGreen(struct sensor* s) {
-    digitalWrite(s->redLED,   HIGH);
-    digitalWrite(s->greenLED, LOW);
+    analogWrite(s->redLED,   0);
+    analogWrite(s->greenLED, 255);
+    analogWrite(s->blueLED,  0);
 }
 
 //--------------------------------------------------
 // Set the LED associated with the sensor s the red
 //--------------------------------------------------
 void ledRed(struct sensor* s) {
-    digitalWrite(s->greenLED, HIGH);
-    digitalWrite(s->redLED,   LOW);
+    analogWrite(s->redLED,   255);
+    analogWrite(s->greenLED, 0);
+    analogWrite(s->blueLED,  0);
+}
+
+//----------------------------------------------------
+// Set the LED associated with the sensor s the white
+//----------------------------------------------------
+void ledWhite(struct sensor* s) {
+    analogWrite(s->redLED,   128);
+    analogWrite(s->greenLED, 128);
+    analogWrite(s->blueLED,  128);
 }
 
 //-----------------------------------
 // Set the status LED to a RGB value
 //-----------------------------------
 void setStatus(int r, int g, int b) {
-    analogWrite(statusLED.red,   255-r);
-    analogWrite(statusLED.green, 255-g);
-    analogWrite(statusLED.blue,  255-b);
+    // Invert RGB
+    r = r == LOW ? HIGH : LOW;
+    g = g == LOW ? HIGH : LOW;
+    b = b == LOW ? HIGH : LOW;
+    digitalWrite(statusLED.red,   r);
+    digitalWrite(statusLED.green, g);
+    digitalWrite(statusLED.blue,  b);
 }
 
 //-----------------------------
@@ -344,7 +359,7 @@ bool areEqual(byte size, byte uidByte[], struct uid* uid) {
 bool isMaster(byte size, byte uidByte[]) {
     for (int i = 0; i < N_OF_MASTERS; i++) {
         if(areEqual(size, uidByte, &MASTERS[i])){
-            return true; 
+            return true;
         }
     }
     return false;
@@ -368,15 +383,15 @@ void dumpUid(byte size, byte uidByte[]) {
 }
 
 //-------------------------------------------------------------------------
-// Set the system in learning mode and wait for all sensors to be assigned 
+// Set the system in learning mode and wait for all sensors to be assigned
 // the proper card
 //-------------------------------------------------------------------------
 
 bool learn() {
     boolean done[N_OF_SENSORS];
     int doneCount = 0;
-    setStatus(0,0,255);
-    
+    setStatus(LOW, LOW, HIGH);
+
     // Initialize and switch all LEDs to red
     for (int i = 0; i < N_OF_SENSORS; i++) {
         struct sensor* s = &sensors[i];
@@ -404,10 +419,10 @@ bool learn() {
                     #endif
                     // Blink once
                     ledOff(s);
-                    setStatus(255,165,0);  // Orange
+                    setStatus(HIGH, HIGH, LOW);  // Orange
                     delay(500);
                     ledRed(s);
-                    setStatus(0,0,255);
+                    setStatus(LOW, LOW, HIGH);
                 } else {
                     #ifdef DEBUG
                     Serial.println("Done");
@@ -426,7 +441,7 @@ bool learn() {
     }
 
     eepromSaveConfig();
-    setStatus(0,255,0);
+    setStatus(LOW, HIGH, LOW);
     delay(1000);
 
     // Clear all LEDs and reset state
@@ -436,7 +451,7 @@ bool learn() {
         s->state = UNKNOWN;
     }
 
-    setStatus(0,0,0);
+    setStatus(LOW, LOW, LOW);
 
 }
 
