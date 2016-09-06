@@ -32,6 +32,11 @@
 #define SECOND (1000 * MILLISECOND)
 #define AUDIO_PULSE_WIDTH (100 * MILLISECOND)
 
+// Change this to tune the White LED
+#define WHITE_RED    20
+#define WHITE_GREEN 115
+#define WHITE_BLUE   90
+
 struct uid {
     byte size;
     byte data[10];
@@ -326,7 +331,7 @@ void ledRed(struct sensor* s) {
 // Set the LED associated with the sensor s the white
 //----------------------------------------------------
 void ledWhite(struct sensor* s) {
-    ledColor(s, 128, 128, 128);
+    ledColor(s, WHITE_RED, WHITE_GREEN, WHITE_BLUE);
 }
 
 //-----------------------------------
