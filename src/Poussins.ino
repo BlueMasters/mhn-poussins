@@ -2,7 +2,7 @@
 
 /***************************************************************************
  * Poussins / Musée d'histoire naturelle de Fribourg
-/***************************************************************************
+ ***************************************************************************
  * Copyright 2016 Jacques Supcik <jacques.supcik@hefr.ch>
  *                Haute école d'ingénierie et d'architecture
  *
@@ -39,9 +39,11 @@ struct uid {
 
 // List of master keys
 struct uid MASTERS[] = {
-    {4, {0x84, 0x6f, 0x9d, 0xbb}},
-    {4, {0x94, 0xb3, 0xa9, 0xbb}},
-    {4, {0x64, 0x11, 0x29, 0xBB}},
+    // {4, {0x84, 0x6f, 0x9d, 0xbb}},
+    // {4, {0x94, 0xb3, 0xa9, 0xbb}},
+    // {4, {0x64, 0x11, 0x29, 0xBB}},
+    {4, {0x26, 0x36, 0xFA, 0x11}},
+    {4, {0x46, 0x91, 0xFA, 0x11}},
 };
 
 enum state {
@@ -63,10 +65,10 @@ struct sensor {
 
 // pin definition for the sensors
 struct sensor sensors[] = {
-    {.redLED =  2, .greenLED =  3, .blueLED =  4, .cs = 22},
-    {.redLED =  5, .greenLED =  6, .blueLED =  7, .cs = 23},
-    {.redLED =  8, .greenLED =  9, .blueLED = 10, .cs = 24},
-    {.redLED = 44, .greenLED = 45, .blueLED = 46, .cs = 25},
+    {.redLED =  2, .greenLED =  3, .blueLED =  4, .cs = 25},
+    {.redLED =  5, .greenLED =  6, .blueLED =  7, .cs = 24},
+    {.redLED =  8, .greenLED =  9, .blueLED = 10, .cs = 23},
+    {.redLED = 44, .greenLED = 45, .blueLED = 46, .cs = 22},
 };
 
 // pins definition for the status LED
@@ -89,7 +91,7 @@ void setup() {
     pinMode(statusLED.red,   OUTPUT);
     pinMode(statusLED.green, OUTPUT);
     pinMode(statusLED.blue,  OUTPUT);
-    setStatus(LOW, LOW, LOW);
+    setStatusOff();
 
     digitalWrite(AUDIO_TRIGGER_PIN, HIGH);
     pinMode(AUDIO_TRIGGER_PIN, OUTPUT);
@@ -123,7 +125,7 @@ void setup() {
         struct sensor* s = &sensors[i];
         ledGreen(s);
     }
-    setStatus(LOW, HIGH, LOW);
+    setStatusGreen();
     delay(2000);
 
     // Turn all LEDs red (visual control)
@@ -131,7 +133,7 @@ void setup() {
         struct sensor* s = &sensors[i];
         ledRed(s);
     }
-    setStatus(HIGH, LOW, LOW);
+    setStatusRed();
     delay(2000);
 
    // Turn all sensor LEDs white
@@ -141,7 +143,7 @@ void setup() {
     }
 
     // Turn status LED blue
-    setStatus(LOW, LOW, HIGH);
+    setStatusBlue();
 
     int countOk = 0;
     // Check all sensors
@@ -187,7 +189,7 @@ void setup() {
         struct sensor* s = &sensors[i];
         ledWhite(s);
     }
-    setStatus(LOW, LOW, LOW);
+    setStatusOff();
 }
 
 /***************************************************************************
@@ -255,7 +257,7 @@ void loop() {
 
     // check of we have all sensors OK
     if (okCount >= N_OF_SENSORS) {
-        setStatus(LOW, HIGH, LOW);
+        setStatusGreen();
         if (!prevOkState && trigger) {
             lastAudioTrigger = now;
             audioPulse = true;
@@ -266,7 +268,7 @@ void loop() {
         prevOkState = curOkState;
         curOkState = true;
     } else {
-        setStatus(HIGH, LOW, LOW);
+        setStatusOff();
         prevOkState = curOkState;
         curOkState = false;
     }
@@ -293,40 +295,38 @@ unsigned long deltaT(unsigned long t0, unsigned long t1) {
     }
 }
 
+void ledColor(struct sensor* s, int r, int g, int b) {
+    analogWrite(s->redLED,   255-r);
+    analogWrite(s->greenLED, 255-g);
+    analogWrite(s->blueLED,  255-b);
+}
+
 //-------------------------------------------------
 // Switch off the LED associated with the sensor s
 //-------------------------------------------------
 void ledOff(struct sensor* s) {
-    analogWrite(s->redLED,   0);
-    analogWrite(s->greenLED, 0);
-    analogWrite(s->blueLED,  0);
+    ledColor(s, 0, 0, 0);
 }
 
 //----------------------------------------------------
 // Set the LED associated with the sensor s the green
 //----------------------------------------------------
 void ledGreen(struct sensor* s) {
-    analogWrite(s->redLED,   0);
-    analogWrite(s->greenLED, 255);
-    analogWrite(s->blueLED,  0);
+    ledColor(s, 0, 255, 0);
 }
 
 //--------------------------------------------------
 // Set the LED associated with the sensor s the red
 //--------------------------------------------------
 void ledRed(struct sensor* s) {
-    analogWrite(s->redLED,   255);
-    analogWrite(s->greenLED, 0);
-    analogWrite(s->blueLED,  0);
+    ledColor(s, 255, 0, 0);
 }
 
 //----------------------------------------------------
 // Set the LED associated with the sensor s the white
 //----------------------------------------------------
 void ledWhite(struct sensor* s) {
-    analogWrite(s->redLED,   128);
-    analogWrite(s->greenLED, 128);
-    analogWrite(s->blueLED,  128);
+    ledColor(s, 128, 128, 128);
 }
 
 //-----------------------------------
@@ -340,6 +340,26 @@ void setStatus(int r, int g, int b) {
     digitalWrite(statusLED.red,   r);
     digitalWrite(statusLED.green, g);
     digitalWrite(statusLED.blue,  b);
+}
+
+void setStatusOff() {
+    setStatus(LOW, LOW, LOW);
+}
+
+void setStatusRed() {
+    setStatus(HIGH, LOW, LOW);
+}
+
+void setStatusGreen() {
+    setStatus(LOW, HIGH, LOW);
+}
+
+void setStatusBlue() {
+    setStatus(LOW, LOW, HIGH);
+}
+
+void setStatusOrange() {
+    setStatus(HIGH, HIGH, LOW);
 }
 
 //-----------------------------
@@ -390,7 +410,7 @@ void dumpUid(byte size, byte uidByte[]) {
 bool learn() {
     boolean done[N_OF_SENSORS];
     int doneCount = 0;
-    setStatus(LOW, LOW, HIGH);
+    setStatusBlue();
 
     // Initialize and switch all LEDs to red
     for (int i = 0; i < N_OF_SENSORS; i++) {
@@ -419,10 +439,10 @@ bool learn() {
                     #endif
                     // Blink once
                     ledOff(s);
-                    setStatus(HIGH, HIGH, LOW);  // Orange
+                    setStatusOrange();
                     delay(500);
                     ledRed(s);
-                    setStatus(LOW, LOW, HIGH);
+                    setStatusBlue();
                 } else {
                     #ifdef DEBUG
                     Serial.println("Done");
@@ -441,7 +461,7 @@ bool learn() {
     }
 
     eepromSaveConfig();
-    setStatus(LOW, HIGH, LOW);
+    setStatusGreen();
     delay(1000);
 
     // Clear all LEDs and reset state
@@ -450,8 +470,7 @@ bool learn() {
         ledOff(s);
         s->state = UNKNOWN;
     }
-
-    setStatus(LOW, LOW, LOW);
+    setStatusOff();
 
 }
 
